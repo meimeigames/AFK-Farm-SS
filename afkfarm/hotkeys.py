@@ -27,7 +27,7 @@ class HotkeyListener(threading.Thread):
         self._stop.set()
 
     @staticmethod
-    def _combo_down(text: str) -> Optional[bool]:
+    def _combo_down(text: str, strict: bool = True) -> Optional[bool]:
         try:
             combo = parse_combo(text)
         except KeyParseError:
@@ -36,8 +36,9 @@ class HotkeyListener(threading.Thread):
             info = key_info(m)
             if info is None or not winapi.is_key_down(info.vk):
                 return False
-        # Без модификаторов — не реагируем, если зажат CTRL/ALT (сочетания игры)
-        if not combo.modifiers:
+        # Без модификаторов — не реагируем, если зажат CTRL/ALT (сочетания игры).
+        # Для аварийной остановки (strict=False) модификаторы не мешают.
+        if strict and not combo.modifiers:
             if winapi.is_key_down(winapi.VK_CONTROL) or winapi.is_key_down(winapi.VK_MENU):
                 return False
         return winapi.is_key_down(combo.info.vk)
@@ -53,7 +54,7 @@ class HotkeyListener(threading.Thread):
             for action, text in bindings.items():
                 if not text:
                     continue
-                down = self._combo_down(text)
+                down = self._combo_down(text, strict=(action != "stop"))
                 if down is None:
                     continue
                 key = f"{action}:{text}"

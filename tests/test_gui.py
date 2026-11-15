@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 
-os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+if sys.platform != "win32":
+    os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 pytest.importorskip("PySide6")
 from PySide6.QtCore import Qt  # noqa: E402

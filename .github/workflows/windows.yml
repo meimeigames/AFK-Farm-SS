@@ -1,0 +1,38 @@
+name: Windows — тесты и сборка
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  test-and-build:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Установка зависимостей
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-dev.txt
+
+      - name: Тесты
+        run: python -m pytest -v -rs
+
+      - name: Сборка AFKFarm.exe
+        run: pyinstaller --noconfirm --clean --windowed --name AFKFarm main.py
+
+      - name: Проверка запуска exe (импорт модулей)
+        shell: pwsh
+        run: |
+          if (!(Test-Path dist/AFKFarm/AFKFarm.exe)) { throw "exe не собран" }
+          Copy-Item README.md dist/AFKFarm/
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: AFKFarm-windows
+          path: dist/AFKFarm
