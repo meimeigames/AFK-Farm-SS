@@ -134,6 +134,8 @@ class VisionConfig:
     target_color: HSVRange = field(default_factory=red_range)
     column_threshold: float = 0.25      # доля пикселей столбца, чтобы считать его заполненным
     min_confidence: float = 0.65        # ниже — показание считается ошибкой распознавания
+    empty_v_max: int = 100              # макс. яркость пустой части полосы HP/MP (иначе — перекрыта)
+    target_empty_v_max: int = 140       # то же для полосы цели
     smoothing: int = 3                  # медиана по N последним кадрам
     target_min_percent: float = 0.8     # минимальное заполнение полосы цели, чтобы считать цель выбранной
     target_frame_threshold: float = 0.70  # порог совпадения шаблона рамки цели

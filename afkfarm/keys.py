@@ -160,14 +160,16 @@ def parse_combo(text: str) -> KeyCombo:
         raise KeyParseError("пустая клавиша")
     raw = str(text).strip()
     # «+» как отдельная клавиша — только через NUMPLUS
-    parts = [p for p in raw.replace(" ", "").split("+") if p]
-    if not parts:
+    parts = raw.replace(" ", "").split("+")
+    if not all(parts):
         raise KeyParseError(f"не удалось разобрать «{raw}»")
     names = [normalize_name(p) for p in parts]
     for n in names:
         if n not in _KEYS:
             raise KeyParseError(f"неизвестная клавиша «{n}»")
     *mods, main = names
+    if mods and main in MODIFIERS:
+        raise KeyParseError("после модификаторов нужна основная клавиша")
     for m in mods:
         if m not in MODIFIERS:
             raise KeyParseError(f"«{m}» не является модификатором (CTRL/SHIFT/ALT)")
