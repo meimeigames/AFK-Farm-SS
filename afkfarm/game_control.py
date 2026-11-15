@@ -13,7 +13,7 @@ import collections
 import logging
 import random
 import threading
-from typing import Callable, Deque, Dict, Optional, Set, Tuple
+from typing import Callable, Deque, Dict, Optional, Set
 
 from . import winapi
 from .config import Config, SafetyConfig

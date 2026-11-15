@@ -134,3 +134,23 @@ def test_vision_state_smoothing(cfg):
     st = v.analyze(im, cfg)
     assert st.hp is not None and st.hp > 95
     assert st.target_supported is False
+
+
+def test_motion_detector_with_time_interval():
+    md = vision.MotionDetector(interval=0.3)
+    rng = np.random.default_rng(1)
+    base = cv2.GaussianBlur((rng.random((200, 400)) * 255).astype(np.uint8), (0, 0), 2)
+    r = Rect(50, 50, 80, 80)
+    t = 0.0
+    vals = []
+    for i in range(20):                      # «идём»: 2 пикселя за кадр 50 мс
+        frame = cv2.cvtColor(np.roll(base, 2 * i, axis=1), cv2.COLOR_GRAY2BGR)
+        vals.append(md.update(frame, r, t))
+        t += 0.05
+    assert vals[0] is None and vals[5] is None      # меньше 0.3 с истории
+    assert vals[-1] is not None and vals[-1] > 2.0
+    still = cv2.cvtColor(np.roll(base, 40, axis=1), cv2.COLOR_GRAY2BGR)
+    for _ in range(10):                      # «стоим»
+        v = md.update(still, r, t)
+        t += 0.05
+    assert v < 0.5

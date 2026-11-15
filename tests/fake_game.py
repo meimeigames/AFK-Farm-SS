@@ -7,14 +7,12 @@
 from __future__ import annotations
 
 import math
-import time
-from dataclasses import dataclass, field
 from typing import List, Optional
 
 import cv2
 import numpy as np
 
-from afkfarm.config import Config, Rect, RoutePoint
+from afkfarm.config import Config, Rect
 from afkfarm.game_capture import Frame
 
 W, H = 1280, 800

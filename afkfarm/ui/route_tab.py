@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import copy
 from pathlib import Path
-from typing import Callable, Optional, Tuple
+from typing import Callable, Tuple
 
 import numpy as np
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (QFileDialog, QMessageBox, QPushButton, QSplitter, QVBoxLayout,
                                QWidget)

@@ -5,14 +5,14 @@ from __future__ import annotations
 import html
 import logging
 import sys
-from typing import Any, Callable, List, Optional, Tuple
+from typing import Any, Callable, List, Tuple
 
 import numpy as np
 from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtGui import QImage, QKeyEvent, QPixmap
 from PySide6.QtWidgets import (QCheckBox, QComboBox, QDoubleSpinBox, QFormLayout, QFrame,
                                QGroupBox, QHBoxLayout, QLabel, QLineEdit, QPlainTextEdit,
-                               QScrollArea, QSpinBox, QVBoxLayout, QWidget)
+                               QScrollArea, QSpinBox, QWidget)
 
 from .. import keys
 

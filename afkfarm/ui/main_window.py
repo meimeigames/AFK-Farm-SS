@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import logging
 import os
 import subprocess
 import sys
@@ -14,7 +13,7 @@ from typing import List, Optional
 import numpy as np
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QAction, QCloseEvent
-from PySide6.QtWidgets import (QFileDialog, QMainWindow, QMessageBox, QTabWidget, QWidget)
+from PySide6.QtWidgets import (QApplication, QFileDialog, QMainWindow, QMessageBox, QTabWidget)
 
 from .. import APP_NAME, __version__, winapi
 from ..bot import Bot, BotStatus, RunState
@@ -275,8 +274,27 @@ class MainWindow(QMainWindow):
             f"Окно игры: <b>{name}</b> — {size}, {'активно' if active else 'не активно'}{warn}",
             True, active)
 
-    def _grab_for_ui(self) -> Optional[np.ndarray]:
-        frame = self.capture.grab()
+    def _grab_for_ui(self, bring_front: bool = True) -> Optional[np.ndarray]:
+        """Снимок окна игры для калибровки.
+
+        Снимается область экрана, поэтому окно программы не должно перекрывать игру:
+        на время снимка программа сворачивается, а окно игры выводится вперёд.
+        """
+        if not (bring_front and winapi.IS_WINDOWS and self.game_window.locate()):
+            frame = self.capture.grab()
+            return None if frame is None else frame.image
+        was_max = self.isMaximized()
+        self.setWindowState(Qt.WindowMinimized)
+        QApplication.processEvents()
+        try:
+            self.game_window.activate()
+            time.sleep(0.5)
+            frame = self.capture.grab()
+        finally:
+            self.setWindowState(Qt.WindowMaximized if was_max else Qt.WindowNoState)
+            self.show()
+            self.raise_()
+            self.activateWindow()
         return None if frame is None else frame.image
 
     def _test_click(self, x: int, y: int):
@@ -374,7 +392,7 @@ class MainWindow(QMainWindow):
         self.dashboard.set_run_state(RunState.STOPPED)
         self.statusBar().showMessage(f"Бот остановлен: {reason}")
         if reason in ("персонаж погиб",) or "ошибок" in reason or "сторож" in reason:
-            QApplication_beep()
+            QApplication.beep()
 
     def _check_watchdog(self):
         if not self.bot.running or self.bot.run_state == RunState.STOPPED:
@@ -418,10 +436,3 @@ class MainWindow(QMainWindow):
         self.apply_now()
         super().closeEvent(ev)
 
-
-def QApplication_beep():
-    try:
-        from PySide6.QtWidgets import QApplication
-        QApplication.beep()
-    except Exception:
-        pass

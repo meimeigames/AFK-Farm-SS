@@ -11,7 +11,6 @@ import traceback
 
 
 def main() -> int:
-    from PySide6.QtCore import Qt
     from PySide6.QtWidgets import QApplication, QMessageBox
 
     from afkfarm import APP_NAME

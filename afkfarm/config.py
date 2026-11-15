@@ -102,7 +102,7 @@ def blue_range() -> HSVRange:
 
 @dataclass
 class WindowConfig:
-    title: str = "Element"              # часть заголовка окна игры
+    title: str = "7th Element|Седьмой элемент|Element"  # часть заголовка окна (варианты через «|»)
     require_foreground: bool = True     # действовать только когда окно игры активно
     activate_on_start: bool = True      # активировать окно игры при старте
     start_delay: float = 2.0            # задержка перед началом работы, с
@@ -124,7 +124,7 @@ class RegionsConfig:
     hotbar: Rect = field(default_factory=lambda: Rect(460, 675, 345, 105))
     hp_potion_slot: Rect = field(default_factory=Rect)
     mp_potion_slot: Rect = field(default_factory=Rect)
-    character: Point = field(default_factory=lambda: Point(640, 560))
+    character: Point = field(default_factory=lambda: Point(640, 640))
 
 
 @dataclass

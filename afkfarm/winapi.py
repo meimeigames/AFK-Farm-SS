@@ -136,18 +136,19 @@ def find_window(title_part: str, exclude_pid: Optional[int] = None) -> Optional[
     """
     if not IS_WINDOWS or not title_part.strip():
         return None
-    needle = title_part.strip().lower()
-    exact = None
-    partial = None
-    for hwnd, title in list_windows():
-        if exclude_pid is not None and window_pid(hwnd) == exclude_pid:
-            continue
-        low = title.lower()
-        if low == needle and exact is None:
-            exact = hwnd
-        elif needle in low and partial is None:
-            partial = hwnd
-    return exact or partial
+    # Несколько вариантов заголовка через «|»: «7th Element|Седьмой элемент»
+    needles = [n.strip().lower() for n in title_part.split("|") if n.strip()]
+    windows = [(h, t) for h, t in list_windows()
+               if exclude_pid is None or window_pid(h) != exclude_pid]
+    for needle in needles:
+        for hwnd, title in windows:
+            if title.lower() == needle:
+                return hwnd
+    for needle in needles:
+        for hwnd, title in windows:
+            if needle in title.lower():
+                return hwnd
+    return None
 
 
 def window_pid(hwnd) -> int:

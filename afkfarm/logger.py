@@ -49,7 +49,7 @@ _file_handler: Optional[RotatingFileHandler] = None
 
 
 def setup_logging(to_file: bool = True, level: int = logging.INFO) -> CallbackHandler:
-    global _callback_handler, _file_handler
+    global _callback_handler
     log.setLevel(logging.DEBUG)
     log.propagate = False
     if _callback_handler is None:

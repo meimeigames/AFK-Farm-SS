@@ -7,9 +7,8 @@ from typing import Any, Callable, Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox,
-                               QDoubleSpinBox, QGridLayout, QHBoxLayout, QHeaderView,
-                               QLineEdit, QListWidget, QListWidgetItem, QPushButton, QSpinBox,
-                               QTableWidget, QVBoxLayout, QWidget)
+                               QGridLayout, QHBoxLayout, QHeaderView, QLineEdit, QListWidget,
+                               QListWidgetItem, QPushButton, QTableWidget, QVBoxLayout, QWidget)
 
 from .. import winapi
 from ..config import Buff, Config, Skill

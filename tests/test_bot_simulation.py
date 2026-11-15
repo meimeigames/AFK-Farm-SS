@@ -4,9 +4,7 @@ from __future__ import annotations
 
 import collections
 
-import pytest
-
-from afkfarm.bot import Bot, Mode, RunState
+from afkfarm.bot import Bot, RunState
 from afkfarm.clock import FakeClock
 from afkfarm.config import ConfigStore, Rect
 from afkfarm.game_control import InputController

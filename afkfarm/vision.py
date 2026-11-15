@@ -16,7 +16,8 @@
 from __future__ import annotations
 
 import collections
-from dataclasses import dataclass, field
+import time
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Deque, Dict, List, Optional, Tuple
 
@@ -294,17 +295,23 @@ def detect_minimap(image: np.ndarray) -> Optional[Rect]:
 # ---------------------------------------------------------------------------
 
 class MotionDetector:
-    """Сравнивает соседние кадры области (мини-карты). Возвращает изменение в %."""
+    """Сравнивает область (мини-карту) с её снимком ~``interval`` секунд назад.
 
-    def __init__(self):
+    Возвращает среднее изменение яркости в % (0 — картинка неподвижна).
+    """
+
+    def __init__(self, interval: float = 0.3):
+        self.interval = interval
+        self._hist: Deque[Tuple[float, np.ndarray]] = collections.deque()
         self._prev: Optional[np.ndarray] = None
         self.last_value: Optional[float] = None
 
     def reset(self) -> None:
+        self._hist.clear()
         self._prev = None
         self.last_value = None
 
-    def update(self, image: np.ndarray, rect: Rect) -> Optional[float]:
+    def update(self, image: np.ndarray, rect: Rect, now: Optional[float] = None) -> Optional[float]:
         sub = crop(image, rect)
         if sub is None:
             self.reset()
@@ -312,14 +319,24 @@ class MotionDetector:
         gray = cv2.cvtColor(sub, cv2.COLOR_BGR2GRAY)
         gray = cv2.resize(gray, (64, 64), interpolation=cv2.INTER_AREA)
         gray = cv2.GaussianBlur(gray, (3, 3), 0)
-        if self._prev is None or self._prev.shape != gray.shape:
-            self._prev = gray
-            self.last_value = None
-            return None
-        diff = float(np.mean(cv2.absdiff(gray, self._prev))) / 255.0 * 100.0
-        self._prev = gray
-        self.last_value = diff
-        return diff
+        if now is None:
+            # Без отметок времени — сравнение с предыдущим кадром
+            prev, self._prev = self._prev, gray
+            if prev is None:
+                self.last_value = None
+                return None
+            self.last_value = float(np.mean(cv2.absdiff(gray, prev))) / 255.0 * 100.0
+            return self.last_value
+        # Опорный кадр — самый свежий из тех, что старше interval
+        while len(self._hist) >= 2 and now - self._hist[1][0] >= self.interval:
+            self._hist.popleft()
+        if self._hist and now - self._hist[0][0] >= self.interval:
+            ref = self._hist[0][1]
+            self.last_value = float(np.mean(cv2.absdiff(gray, ref))) / 255.0 * 100.0
+        self._hist.append((now, gray))
+        while len(self._hist) > 64:
+            self._hist.popleft()
+        return self.last_value
 
 
 def region_brightness(image: np.ndarray, rect: Rect) -> Optional[float]:
@@ -424,10 +441,12 @@ class Vision:
         hist.append(value)
         return float(np.median(list(hist)[-max(1, n):]))
 
-    def analyze(self, image: np.ndarray, cfg: Config, timestamp: float = 0.0,
+    def analyze(self, image: np.ndarray, cfg: Config, timestamp: Optional[float] = None,
                 track_motion: bool = True) -> VisionState:
         v = cfg.vision
         reg = cfg.regions
+        if timestamp is None:
+            timestamp = time.monotonic()
         st = VisionState(timestamp=timestamp)
         H, W = image.shape[:2]
         st.size_mismatch = (W, H) != (reg.reference_width, reg.reference_height)
@@ -457,7 +476,7 @@ class Vision:
             st.target_hp = t.percent if present else None
 
         if track_motion and reg.minimap.is_valid():
-            st.motion = self.motion.update(image, reg.minimap)
+            st.motion = self.motion.update(image, reg.minimap, timestamp)
 
         if v.hp_slot_ref > 0 and reg.hp_potion_slot.is_valid():
             b = region_brightness(image, reg.hp_potion_slot)

@@ -123,14 +123,14 @@ class PotionManager:
                     self.last_crit = self.last_any = now
                     self.crit_used += 1
                     self._pending.append(_Pending("hp", now, hp))
-                    log.info("Критическое HP %.0f%% — клавиша %s", hp, p.hp_critical_key)
+                    log.info("Критическое HP %.1f%% — клавиша %s", hp, p.hp_critical_key)
                     return "crit"
             if self.hp_ready(now, vs, p, critical):
                 if self.ctrl.press(p.hp_key):
                     self.last_hp = self.last_any = now
                     self.hp_used += 1
                     self._pending.append(_Pending("hp", now, hp))
-                    log.info("HP %.0f%% < %.0f%% — зелье HP (%s)", hp, p.hp_threshold, p.hp_key)
+                    log.info("HP %.1f%% < %.0f%% — зелье HP (%s)", hp, p.hp_threshold, p.hp_key)
                     return "hp"
 
         mp = vs.mp
@@ -139,6 +139,6 @@ class PotionManager:
                 self.last_mp = self.last_any = now
                 self.mp_used += 1
                 self._pending.append(_Pending("mp", now, mp))
-                log.info("MP %.0f%% < %.0f%% — зелье MP (%s)", mp, p.mp_threshold, p.mp_key)
+                log.info("MP %.1f%% < %.0f%% — зелье MP (%s)", mp, p.mp_threshold, p.mp_key)
                 return "mp"
         return None

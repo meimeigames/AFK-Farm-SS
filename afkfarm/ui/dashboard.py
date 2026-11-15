@@ -5,9 +5,8 @@ from __future__ import annotations
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QFrame, QGridLayout, QHBoxLayout, QLabel, QProgressBar,
-                               QPushButton, QSizePolicy, QSplitter, QVBoxLayout, QWidget)
+                               QPushButton, QSizePolicy, QVBoxLayout, QWidget)
 
 from ..bot import BotStatus, Mode, RunState, RUN_LABELS
 from .style import GREEN, ORANGE, RED, ACCENT, FG_DIM

@@ -9,7 +9,7 @@ import cv2
 import numpy as np
 from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QIcon, QPixmap
-from PySide6.QtWidgets import (QFileDialog, QFormLayout, QGridLayout, QHBoxLayout, QLabel,
+from PySide6.QtWidgets import (QFileDialog, QGridLayout, QLabel,
                                QListWidget, QListWidgetItem, QMessageBox, QPushButton,
                                QSpinBox, QSplitter, QVBoxLayout, QWidget)
 
@@ -56,7 +56,7 @@ def _swatch(color: str) -> QIcon:
 class CalibrationTab(ConfigTab):
     snapshotTaken = Signal(object)    # np.ndarray (BGR)
 
-    def __init__(self, grab_frame: Callable[[], Optional[np.ndarray]],
+    def __init__(self, grab_frame: Callable[[bool], Optional[np.ndarray]],
                  current_cfg: Callable[[], Config], parent=None):
         super().__init__(parent)
         self.grab_frame = grab_frame
@@ -159,7 +159,8 @@ class CalibrationTab(ConfigTab):
         t1 = QPushButton("Проверить на снимке")
         self.btn_live = QPushButton("▶ Живой тест")
         self.btn_live.setCheckable(True)
-        self.btn_live.setToolTip("Каждые 0,5 с делать снимок окна игры и показывать результат.")
+        self.btn_live.setToolTip("Каждые 0,5 с делать снимок окна игры и показывать результат.\n"
+                                 "Расположите окна так, чтобы программа не перекрывала игру.")
         t1.clicked.connect(self.test_snapshot)
         self.btn_live.toggled.connect(self._toggle_live)
         self.result = QLabel("—")
@@ -244,7 +245,7 @@ class CalibrationTab(ConfigTab):
     # Снимок
     # ------------------------------------------------------------------
     def take_snapshot(self) -> bool:
-        img = self.grab_frame()
+        img = self.grab_frame(True)
         if img is None:
             QMessageBox.warning(self, "Снимок", "Окно игры не найдено или свёрнуто.\n\n"
                                 "Проверьте заголовок окна на вкладке «Настройки» "
@@ -549,7 +550,7 @@ class CalibrationTab(ConfigTab):
             self.live_timer.stop()
 
     def _live_tick(self):
-        img = self.grab_frame()
+        img = self.grab_frame(False)
         if img is None:
             self.result.setText("<span style='color:#ff6b6b'>Окно игры не найдено</span>")
             return
