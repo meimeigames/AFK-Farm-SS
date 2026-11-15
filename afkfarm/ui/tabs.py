@@ -406,7 +406,8 @@ class SettingsTab(ConfigTab):
 
         box, f = group("Окно игры")
         self.title_edit = QLineEdit()
-        self.title_edit.setToolTip("Часть заголовка окна игры (без учёта регистра).")
+        self.title_edit.setToolTip("Часть заголовка окна игры (без учёта регистра).\n"
+                                   "Несколько вариантов — через «|», например: 7th Element|Седьмой элемент")
         b.add("window.title", self.title_edit)
         self.title_edit.editingFinished.connect(lambda: self.windowTitleChanged.emit(self.title_edit.text()))
         pick = QPushButton("Выбрать…")
