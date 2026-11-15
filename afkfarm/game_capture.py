@@ -100,7 +100,8 @@ class GameCapture:
         sct = getattr(self._local, "sct", None)
         if sct is None:
             import mss  # импорт здесь, чтобы модуль загружался и без mss
-            sct = mss.mss()
+            factory = getattr(mss, "MSS", None) or mss.mss   # mss 10+: MSS, раньше: mss()
+            sct = factory()
             self._local.sct = sct
         return sct
 
