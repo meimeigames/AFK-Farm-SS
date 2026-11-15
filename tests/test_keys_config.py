@@ -66,3 +66,52 @@ def test_route_save_load(tmp_path):
     p = tmp_path / "r.json"
     config.save_route(pts, p)
     assert config.load_route(p) == pts
+
+
+def test_russian_layout_aliases():
+    assert str(keys.parse_combo("ы")) == "S"
+    assert str(keys.parse_combo("Ctrl+а")) == "CTRL+F"
+    assert keys.key_info("ы").scan == keys.key_info("S").scan
+
+
+def test_migration_from_v1(tmp_path):
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps({"version": 1, "safety": {"max_same_key_per_10s": 35,
+                                                       "max_inputs_per_10s": 80}}), encoding="utf-8")
+    cfg = config.load_config(p)
+    assert cfg.safety.max_same_key_per_10s == 60
+    assert cfg.safety.max_inputs_per_10s == 120
+    assert cfg.version == config.Config().version
+    assert cfg.combat.mode == "simple"
+
+
+def test_defaults_match_requested_setup():
+    cfg = config.Config()
+    assert cfg.combat.mode == "simple"
+    assert (cfg.combat.target_key, cfg.combat.attack_key) == ("TAB", "F")
+    assert [s.key for s in cfg.combat.skills if s.enabled] == list("12345678")
+    assert cfg.combat.simple_use_skills
+    assert (cfg.potions.hp_key, cfg.potions.hp_threshold) == ("0", 50.0)
+    assert (cfg.potions.mp_key, cfg.potions.mp_threshold) == ("9", 50.0)
+
+
+def test_migration_v2_replaces_untouched_old_defaults(tmp_path):
+    old = config.Config()
+    old.version = 2
+    old.combat.skills = config._old_default_skills()
+    old.combat.simple_use_skills = False
+    old.potions.hp_key, old.potions.hp_threshold = "9", 70.0
+    old.potions.mp_key, old.potions.mp_threshold = "0", 30.0
+    p = tmp_path / "c.json"
+    config.save_config(old, p)
+    cfg = config.load_config(p)
+    assert (cfg.potions.hp_key, cfg.potions.mp_key) == ("0", "9")
+    assert len(cfg.combat.skills) == 8 and cfg.combat.simple_use_skills
+
+
+def test_migration_keeps_user_changes(tmp_path):
+    p = tmp_path / "c.json"
+    p.write_text(json.dumps({"version": 2, "potions": {"hp_key": "5", "hp_threshold": 60}}),
+                 encoding="utf-8")
+    cfg = config.load_config(p)
+    assert (cfg.potions.hp_key, cfg.potions.hp_threshold) == ("5", 60.0)

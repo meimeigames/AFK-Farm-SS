@@ -338,8 +338,13 @@ class MainWindow(QMainWindow):
         for bf in cfg.combat.buffs:
             if bf.enabled:
                 chk(f"бафф «{bf.name}»", bf.key)
-        if not cfg.regions.hp_bar.is_valid():
-            problems.append("не задана область полосы HP (вкладка «Калибровка»)")
+        needs_hp = (cfg.potions.hp_enabled or cfg.potions.mp_enabled or cfg.potions.rest_enabled
+                    or cfg.combat.mode == "full")
+        if needs_hp and not cfg.regions.hp_bar.is_valid():
+            problems.append("не задана область полосы HP (вкладка «Калибровка») — нужна для зелий")
+        if cfg.combat.mode == "simple" and not cfg.regions.target_bar.is_valid():
+            problems.append("не задана «Полоса HP цели» (вкладка «Калибровка»): в простом режиме "
+                            "бот по ней понимает, есть ли моб")
         return problems
 
     def _hotkey_conflicts(self, cfg: Config) -> List[str]:

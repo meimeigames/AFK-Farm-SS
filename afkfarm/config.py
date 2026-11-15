@@ -167,7 +167,15 @@ class Buff:
     in_combat: bool = False     # разрешено ли использовать во время боя
 
 
+SKILL_PERIOD = 5.0   # по умолчанию каждое умение 1–8 нажимается раз в 5 с
+
+
 def default_skills() -> List[Skill]:
+    """Цифры 1–8 периодически во время боя (перезарядку можно поменять под свои умения)."""
+    return [Skill(True, f"Умение {i}", str(i), SKILL_PERIOD, 0.3, 0.0, 0.0) for i in range(1, 9)]
+
+
+def _old_default_skills() -> List[Skill]:
     return [
         Skill(True, "Умение 1", "1", 3.0, 0.6, 5.0, 0.0),
         Skill(True, "Умение 2", "2", 6.0, 0.6, 10.0, 0.0),
@@ -177,9 +185,18 @@ def default_skills() -> List[Skill]:
 
 @dataclass
 class CombatConfig:
+    # Режим боя:
+    #   simple — нет полосы HP цели → клавиша выбора цели; полоса есть → атака без остановки,
+    #            пока полоса не исчезнет. Без поиска по маршруту и перемещения.
+    #   full   — поиск, умения, застревание, перемещение по маршруту.
+    mode: str = "simple"
     target_key: str = "TAB"
     attack_key: str = "F"
     clear_target_key: str = "ESC"
+    simple_attack_interval: float = 0.3  # простой режим: как часто жать атаку, пока цель жива
+    simple_tab_interval: float = 0.6     # простой режим: как часто жать выбор цели, пока полосы нет
+    simple_use_skills: bool = True       # простой режим: умения 1–8 периодически во время боя
+    simple_reset_after: float = 0.0      # HP цели не меняется N с → сброс цели (0 — никогда)
     action_delay: float = 0.35          # минимальная пауза между боевыми нажатиями, с
     attack_repeat_interval: float = 3.0  # повторное нажатие атаки, если умения не готовы
     search_delay: float = 0.8           # пауза между попытками поиска цели, с
@@ -202,16 +219,16 @@ class PotionsConfig:
     check_interval: float = 0.3         # интервал проверки HP/MP, с
     min_gap: float = 1.0                # минимальная пауза между любыми зельями, с
     hp_enabled: bool = True
-    hp_key: str = "9"
-    hp_threshold: float = 70.0
+    hp_key: str = "0"
+    hp_threshold: float = 50.0
     hp_cooldown: float = 10.0
-    hp_critical_threshold: float = 40.0
+    hp_critical_threshold: float = 30.0
     hp_critical_key: str = ""           # опц.: второе зелье/умение лечения
     hp_critical_cooldown: float = 30.0
     critical_recheck: float = 1.0       # как часто перепроверять готовность при критическом HP
     mp_enabled: bool = True
-    mp_key: str = "0"
-    mp_threshold: float = 30.0
+    mp_key: str = "9"
+    mp_threshold: float = 50.0
     mp_cooldown: float = 10.0
     visual_cooldown_check: bool = False  # проверять затемнение слота зелья
     verify_time: float = 3.0            # через сколько секунд проверять эффект зелья
@@ -269,8 +286,8 @@ class SafetyConfig:
     input_mode: str = "scancode"        # scancode | vk
     key_hold: float = 0.04              # длительность удержания клавиши, с
     min_input_gap: float = 0.06         # минимальная пауза между любыми нажатиями, с
-    max_same_key_per_10s: int = 35      # защита от спама одной клавишей
-    max_inputs_per_10s: int = 80        # общий лимит нажатий
+    max_same_key_per_10s: int = 60      # защита от спама одной клавишей
+    max_inputs_per_10s: int = 120       # общий лимит нажатий
     spam_pause_after: int = 15          # столько заблокированных нажатий подряд — пауза бота
     recognition_error_limit: int = 60   # кадров подряд с ошибкой распознавания — пауза
     tick_interval: float = 0.05         # период главного цикла, с
@@ -279,7 +296,7 @@ class SafetyConfig:
 
 @dataclass
 class Config:
-    version: int = 1
+    version: int = 3
     window: WindowConfig = field(default_factory=WindowConfig)
     regions: RegionsConfig = field(default_factory=RegionsConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
@@ -371,7 +388,33 @@ def load_config(path: Optional[Path] = None) -> Config:
         return Config()
     with open(path, "r", encoding="utf-8") as fh:
         data = json.load(fh)
-    return from_dict(Config, data)
+    cfg = from_dict(Config, data)
+    return migrate(cfg, data)
+
+
+def migrate(cfg: "Config", data: Any) -> "Config":
+    """Обновить настройки, сохранённые старой версией программы."""
+    old_version = data.get("version", 1) if isinstance(data, dict) else 1
+    if old_version < 2:
+        # v2: простой режим «F без остановки» — лимиты защиты от спама выше
+        if cfg.safety.max_same_key_per_10s == 35:
+            cfg.safety.max_same_key_per_10s = 60
+        if cfg.safety.max_inputs_per_10s == 80:
+            cfg.safety.max_inputs_per_10s = 120
+    if old_version < 3:
+        # v3: схема по умолчанию — F без остановки, умения 1–8, HP < 50% → 0, MP < 50% → 9.
+        # Меняем только то, что пользователь не трогал (совпадает со старыми значениями).
+        p = cfg.potions
+        if (p.hp_key, p.hp_threshold, p.mp_key, p.mp_threshold) == ("9", 70.0, "0", 30.0):
+            p.hp_key, p.hp_threshold = "0", 50.0
+            p.mp_key, p.mp_threshold = "9", 50.0
+            if p.hp_critical_threshold == 40.0:
+                p.hp_critical_threshold = 30.0
+        if cfg.combat.skills == _old_default_skills():
+            cfg.combat.skills = default_skills()
+            cfg.combat.simple_use_skills = True
+    cfg.version = Config().version
+    return cfg
 
 
 def save_config(cfg: Config, path: Optional[Path] = None) -> Path:

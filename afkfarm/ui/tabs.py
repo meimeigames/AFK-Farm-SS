@@ -7,7 +7,7 @@ from typing import Any, Callable, Dict, List, Optional
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (QAbstractItemView, QCheckBox, QDialog, QDialogButtonBox,
-                               QGridLayout, QHBoxLayout, QHeaderView, QLineEdit, QListWidget,
+                               QGridLayout, QHBoxLayout, QHeaderView, QLabel, QLineEdit, QListWidget,
                                QListWidgetItem, QPushButton, QTableWidget, QVBoxLayout, QWidget)
 
 from .. import winapi
@@ -215,13 +215,42 @@ class CombatTab(ConfigTab):
         grid = QGridLayout(body)
         grid.setHorizontalSpacing(12)
 
+        box, f = group("Режим боя")
+        self.mode = b.add("combat.mode", combo([
+            ("Простой: нет полосы HP моба → выбор цели, есть → атака без остановки", "simple"),
+            ("Полный: поиск, умения, застревание, перемещение по маршруту", "full"),
+        ]))
+        self.mode.currentIndexChanged.connect(self._update_enabled)
+        f.addRow("Режим:", self.mode)
+        self.simple_box = QWidget()
+        sf = QGridLayout(self.simple_box)
+        sf.setContentsMargins(0, 0, 0, 0)
+        sf.setHorizontalSpacing(10)
+        sf.addWidget(QLabel("Жать атаку каждые:"), 0, 0, Qt.AlignRight)
+        sf.addWidget(b.add("combat.simple_attack_interval", dspin(
+            0.1, 5, 0.05, 2, " с", "Пока полоса HP моба видна, клавиша атаки нажимается с этим интервалом.")), 0, 1)
+        sf.addWidget(QLabel("Жать выбор цели каждые:"), 0, 2, Qt.AlignRight)
+        sf.addWidget(b.add("combat.simple_tab_interval", dspin(
+            0.2, 10, 0.1, 2, " с", "Пока полосы HP моба нет, клавиша выбора цели нажимается с этим интервалом.")), 0, 3)
+        sf.addWidget(QLabel("Сброс цели, если HP моба не меняется:"), 1, 0, Qt.AlignRight)
+        sf.addWidget(b.add("combat.simple_reset_after", dspin(
+            0, 600, 1, 0, " с", "0 — никогда: атаковать, пока полоса не исчезнет.\n"
+                              "Иначе — нажать «Сброс цели», если моб недоступен.")), 1, 1)
+        sf.addWidget(b.add("combat.simple_use_skills", check(
+            "Также использовать умения из таблицы ниже")), 1, 2, 1, 2)
+        sf.setColumnStretch(4, 1)
+        f.addRow(self.simple_box)
+        self.mode_hint = hint("")
+        f.addRow(self.mode_hint)
+        grid.addWidget(box, 0, 0, 1, 2)
+
         box, f = group("Клавиши управления")
         f.addRow("Выбор ближайшей цели:", b.add("combat.target_key", KeyEdit()))
         f.addRow("Атака выбранной цели:", b.add("combat.attack_key", KeyEdit()))
         f.addRow("Сброс цели:", b.add("combat.clear_target_key", KeyEdit()))
-        f.addRow(hint("В игре: TAB — ближайший монстр, F — атака. Сброс цели (ESC) нужен, "
-                      "если монстр недоступен."))
-        grid.addWidget(box, 0, 0)
+        f.addRow(hint("В игре: TAB — ближайший монстр, F — атака. Щёлкните в поле и нажмите "
+                      "нужную клавишу (русская «ы» — это физическая клавиша S)."))
+        grid.addWidget(box, 1, 0)
 
         box, f = group("Задержки")
         f.addRow("Пауза между действиями:", b.add("combat.action_delay", dspin(
@@ -235,7 +264,8 @@ class CombatTab(ConfigTab):
         f.addRow("Попыток поиска до перемещения:", b.add("combat.max_search_attempts", ispin(1, 50)))
         f.addRow("Цель пропала, если нет рамки:", b.add("combat.target_lost_confirm", dspin(
             0.05, 5, 0.05, 2, " с", "Защита от мерцания: столько рамка цели должна отсутствовать.")))
-        grid.addWidget(box, 0, 1)
+        grid.addWidget(box, 1, 1)
+        self.delays_box = box
 
         box, f = group("Застревание и «слепой» режим")
         f.addRow("HP цели не меняется дольше:", b.add("combat.stuck_timeout", dspin(
@@ -245,31 +275,36 @@ class CombatTab(ConfigTab):
         f.addRow("Застреваний подряд до смены места:", b.add("combat.max_stuck_in_row", ispin(1, 20)))
         f.addRow("Длительность боя в «слепом» режиме:", b.add("combat.blind_fight_time", dspin(
             1, 120, 0.5, 1, " с", "Если полоса HP цели не откалибрована, бот атакует по таймеру.")))
-        grid.addWidget(box, 1, 0)
+        grid.addWidget(box, 2, 0)
+        self.stuck_box = box
 
         box, f = group("Сбор добычи (необязательно)")
         f.addRow("Клавиша подбора:", b.add("combat.loot_key", KeyEdit()))
         f.addRow("Нажатий после убийства:", b.add("combat.loot_presses", ispin(0, 10)))
         f.addRow("Пауза между нажатиями:", b.add("combat.loot_delay", dspin(0.1, 5, 0.1, 2, " с")))
         f.addRow(hint("Оставьте пустым, если в игре автоподбор или лут не нужен."))
-        grid.addWidget(box, 1, 1)
+        grid.addWidget(box, 2, 1)
+        self.loot_box = box
 
         box, lay = group("Боевые умения (порядок = приоритет)", QVBoxLayout())
-        self.skills = ObjectTable(SKILL_COLUMNS, lambda: Skill(True, "Умение", "", 5.0, 0.5, 0.0, 0.0))
+        self.skills = ObjectTable(SKILL_COLUMNS, lambda: Skill(True, "Умение", "", 5.0, 0.3, 0.0, 0.0),
+                                  min_rows_height=300)
         self.skills.changed.connect(self.changed.emit)
         lay.addWidget(self.skills)
         lay.addWidget(hint("Каждое умение нажимается, когда прошла его перезарядка. Верхние строки "
                            "имеют приоритет. Сочетания: CTRL+1, SHIFT+2 и т.п. "
                            "(в игре слоты «C-1…C-0» — вероятно, CTRL+цифра)."))
-        grid.addWidget(box, 2, 0, 1, 2)
+        grid.addWidget(box, 3, 0, 1, 2)
+        self.skills_box = box
 
         box, lay = group("Баффы", QVBoxLayout())
         self.buffs = ObjectTable(BUFF_COLUMNS, lambda: Buff(True, "Бафф", "", 300.0, 1.0, False),
                                  min_rows_height=120)
         self.buffs.changed.connect(self.changed.emit)
         lay.addWidget(self.buffs)
-        grid.addWidget(box, 3, 0, 1, 2)
-        grid.setRowStretch(4, 1)
+        grid.addWidget(box, 4, 0, 1, 2)
+        self.buffs_box = box
+        grid.setRowStretch(5, 1)
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
@@ -279,6 +314,22 @@ class CombatTab(ConfigTab):
         super().load(cfg)
         self.skills.set_objects(copy.deepcopy(cfg.combat.skills))
         self.buffs.set_objects(copy.deepcopy(cfg.combat.buffs))
+        self._update_enabled()
+
+    def _update_enabled(self, *_):
+        simple = self.mode.currentData() == "simple"
+        self.simple_box.setVisible(simple)
+        for box in (self.delays_box, self.stuck_box, self.loot_box, self.buffs_box):
+            box.setVisible(not simple)
+        if simple:
+            self.mode_hint.setText(
+                "Бот не ищет монстров и не ходит: если полосы HP моба нет — жмёт клавишу выбора "
+                "цели, как только полоса появилась — жмёт атаку без остановки, пока полоса не "
+                "исчезнет. Зелья (вкладка «Зелья») работают. Нужна откалиброванная «Полоса HP цели».")
+        else:
+            self.mode_hint.setText(
+                "Поиск цели с проверкой рамки, ротация умений, сброс застрявшей цели и перемещение "
+                "по маршруту, если рядом нет монстров.")
 
     def apply(self, cfg: Config) -> None:
         super().apply(cfg)

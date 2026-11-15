@@ -12,7 +12,7 @@ from typing import List, Optional
 import cv2
 import numpy as np
 
-from afkfarm.config import Config, Rect
+from afkfarm.config import Config, Rect, Skill
 from afkfarm.game_capture import Frame
 
 W, H = 1280, 800
@@ -24,11 +24,15 @@ def sim_config() -> Config:
     cfg.regions.target_bar = TARGET_BAR
     cfg.window.start_delay = 0.0
     cfg.window.activate_on_start = False
-    cfg.combat.skills[0].key = "1"
-    cfg.combat.skills[1].key = "2"
+    cfg.combat.skills = [Skill(True, "Умение 1", "1", 3.0, 0.6, 5.0, 0.0),
+                         Skill(True, "Умение 2", "2", 6.0, 0.6, 10.0, 0.0)]
     cfg.potions.hp_key = "9"
+    cfg.potions.hp_threshold = 70.0
+    cfg.potions.hp_critical_threshold = 40.0
     cfg.potions.mp_key = "0"
+    cfg.potions.mp_threshold = 30.0
     cfg.movement.mode = "roam"
+    cfg.combat.mode = "full"
     return cfg
 
 
@@ -51,6 +55,10 @@ class FakeGame:
         self.potion_cd = {"9": 0.0, "0": 0.0}
         self.t = 0.0
         self.unreachable_target = False
+        self.hp_potion_key = "9"
+        self.mp_potion_key = "0"
+        self.skill_keys = {"1", "2"}
+        self.potion_log: List[tuple] = []      # (клавиша, HP, MP) в момент нажатия
         self.hide_bars = False
         rng = np.random.default_rng(1)
         self.texture = (rng.random((400, 400)) * 255).astype(np.uint8)
@@ -69,18 +77,19 @@ class FakeGame:
         elif name == "ESC":
             self.target_hp = None
             self.attacking = False
-        elif name in ("1", "2"):
+        elif name in (self.hp_potion_key, self.mp_potion_key):
+            self.potion_log.append((name, self.hp, self.mp))
+            if self.t >= self.potion_cd.get(name, 0.0):
+                self.potion_cd[name] = self.t + 8.0
+                if name == self.hp_potion_key:
+                    self.hp = min(100.0, self.hp + 35)
+                else:
+                    self.mp = min(100.0, self.mp + 40)
+        elif name in self.skill_keys:
             if self.target_hp is not None and self.mp >= 5:
                 self.mp -= 5
                 if not self.unreachable_target:
                     self.target_hp -= 10
-        elif name in ("9", "0"):
-            if self.t >= self.potion_cd[name]:
-                self.potion_cd[name] = self.t + 8.0
-                if name == "9":
-                    self.hp = min(100.0, self.hp + 35)
-                else:
-                    self.mp = min(100.0, self.mp + 40)
 
     def on_click(self, x: int, y: int) -> None:
         self.clicks.append((round(self.t, 2), x, y))

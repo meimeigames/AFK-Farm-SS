@@ -85,10 +85,26 @@ class CombatManager:
             return True
         return False
 
+    def use_ready_skill(self, now: float, vs: VisionState, cfg: Config) -> bool:
+        """Нажать первое готовое умение (без повтора атаки). True — умение нажато."""
+        if not self.can_act(now, cfg):
+            return False
+        return bool(self._skill(now, vs, cfg))
+
     def rotation(self, now: float, vs: VisionState, cfg: Config) -> Optional[str]:
         """Одно боевое действие за вызов: умение по приоритету либо повтор атаки."""
         if not self.can_act(now, cfg):
             return None
+        used = self._skill(now, vs, cfg)
+        if used is not None:
+            return used or None
+        if now - self.last_attack >= cfg.combat.attack_repeat_interval:
+            if self.press_attack(now, cfg):
+                return "attack"
+        return None
+
+    def _skill(self, now: float, vs: VisionState, cfg: Config) -> Optional[str]:
+        """Попытаться нажать умение. Строка — нажато; "" — нажатие не прошло; None — нечего нажимать."""
         mp = vs.mp
         for i, sk in enumerate(cfg.combat.skills):
             if not sk.enabled or not sk.key.strip():
@@ -107,10 +123,7 @@ class CombatManager:
                 self.skills_used += 1
                 log.debug("Умение «%s» (%s)", sk.name, sk.key)
                 return f"skill:{sk.name}"
-            return None   # нажать не удалось (окно не активно / лимит) — ждём
-        if now - self.last_attack >= cfg.combat.attack_repeat_interval:
-            if self.press_attack(now, cfg):
-                return "attack"
+            return ""     # нажать не удалось (окно не активно / лимит) — ждём
         return None
 
     def due_buff(self, now: float, cfg: Config, in_combat: bool) -> Optional[int]:

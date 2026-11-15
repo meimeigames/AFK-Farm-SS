@@ -158,6 +158,11 @@ class Bot:
         self.foreground = False
         self.size_warned = False
         self.errors_in_row = 0
+        self.simple_in_fight = False
+        self.simple_next_attack = 0.0
+        self.simple_next_tab = 0.0
+        self.simple_clamp_warned = False
+        self.last_combat_mode = None
         self.potions.reset()
         self.vision.reset()
         self.nav.reset_move()
@@ -258,7 +263,15 @@ class Bot:
                 self.heartbeat = self.clock.now()   # сторожевой таймер видит, что мы живы
                 if not self.clock.sleep(min(0.2, end - self.clock.now())):
                     return
-        if not cfg.regions.target_bar.is_valid():
+        if cfg.combat.mode == "simple":
+            if not cfg.regions.target_bar.is_valid():
+                log.error("Простой режим: не откалибрована полоса HP цели — без неё бот не видит "
+                          "моба. Откалибруйте её на вкладке «Калибровка».")
+                self.stop("не откалибрована полоса HP цели")
+                return
+            log.info("Простой режим: нет полосы HP моба → %s, есть полоса → %s без остановки",
+                     cfg.combat.target_key, cfg.combat.attack_key)
+        elif not cfg.regions.target_bar.is_valid():
             log.warning("Полоса HP цели не откалибрована — включён «слепой» режим: "
                         "TAB + атака по таймеру (%.0f с). Откалибруйте полосу цели "
                         "для надёжной работы.", cfg.combat.blind_fight_time)
@@ -321,8 +334,11 @@ class Bot:
             return
         self.message = ""
 
-        # --- ошибки распознавания ---
-        if vs.hp is None:
+        # --- ошибки распознавания (только если область HP задана) ---
+        hp_tracked = cfg.regions.hp_bar.is_valid()
+        if not hp_tracked:
+            self.recog_errors = 0
+        elif vs.hp is None:
             self.recog_errors += 1
             log_throttled(logging.WARNING, "recog-hp",
                           "Не удаётся распознать полосу HP (перекрыта или неверная область)", 10)
@@ -365,6 +381,18 @@ class Bot:
         self.stats.mp_potions = self.potions.mp_used
 
         # --- режим ---
+        if cfg.combat.mode != self.last_combat_mode:
+            if self.last_combat_mode is not None:
+                log.info("Режим боя изменён: %s", "простой" if cfg.combat.mode == "simple" else "полный")
+            self.last_combat_mode = cfg.combat.mode
+            self.simple_in_fight = False
+            self.nav.reset_move()
+            self._enter_search(now, immediate=True)
+        if cfg.combat.mode == "simple":
+            self._do_simple(now, vs, cfg)
+            self.stats.skills_used = self.combat.skills_used
+            self._emit_status(frame=frame, vs=vs)
+            return
         handler = {
             Mode.SEARCH: self._do_search,
             Mode.ATTACK: self._do_attack,
@@ -416,6 +444,63 @@ class Bot:
         if vs.hp is not None and vs.hp < p.rest_start_hp:
             return True
         return vs.mp is not None and vs.mp < p.rest_start_mp
+
+    # ПРОСТОЙ РЕЖИМ -----------------------------------------------------------
+    def _simple_attack_interval(self, cfg: Config) -> float:
+        """Интервал атаки, не превышающий лимит защиты от спама."""
+        want = max(0.1, cfg.combat.simple_attack_interval)
+        limit = max(4, cfg.safety.max_same_key_per_10s)
+        floor = 10.0 / (limit - 3)
+        if want < floor and not self.simple_clamp_warned:
+            self.simple_clamp_warned = True
+            log.warning("Интервал атаки %.2f с превышает лимит защиты от спама (%d нажатий за 10 с) — "
+                        "использую %.2f с", want, limit, floor)
+        return max(want, floor)
+
+    def _do_simple(self, now: float, vs: VisionState, cfg: Config) -> None:
+        """Нет полосы HP цели → выбор цели; полоса есть → атака без остановки."""
+        c = cfg.combat
+        if vs.target_present:
+            self.target_absent_since = None
+            if not self.simple_in_fight:
+                self.simple_in_fight = True
+                self.stats.targets_found += 1
+                self.combat.start_fight(now, vs.target_hp)
+                self.simple_next_attack = now
+                self._set_mode(Mode.ATTACK)
+                log.info("Есть цель (HP %.0f%%) — атакую", vs.target_hp or 0)
+            self.combat.update_target(now, vs.target_hp)
+            if c.simple_reset_after > 0 and now - self.combat.last_progress > c.simple_reset_after:
+                log.warning("HP цели не меняется %.0f с — сбрасываю цель", c.simple_reset_after)
+                self.stats.stuck += 1
+                if c.clear_target_key.strip():
+                    self.ctrl.press(c.clear_target_key)
+                self.simple_in_fight = False
+                self.simple_next_tab = now + 0.3
+                self._set_mode(Mode.SEARCH)
+                return
+            if c.simple_use_skills and self.combat.use_ready_skill(now, vs, cfg):
+                return
+            if now >= self.simple_next_attack and now >= self.combat.busy_until:
+                if self.ctrl.press(c.attack_key):
+                    self.combat.last_attack = now
+                self.simple_next_attack = now + self._simple_attack_interval(cfg)
+            return
+
+        # Полосы нет
+        if self.simple_in_fight:
+            if self.target_absent_since is None:
+                self.target_absent_since = now
+            if now - self.target_absent_since < c.target_lost_confirm:
+                return
+            self.simple_in_fight = False
+            self.stats.kills += 1
+            log.info("Полоса HP цели пропала — цель убита (всего: %d)", self.stats.kills)
+            self.simple_next_tab = now          # сразу выбрать следующую
+            self._set_mode(Mode.SEARCH)
+        if now >= self.simple_next_tab:
+            self.ctrl.press(c.target_key)
+            self.simple_next_tab = now + max(0.2, c.simple_tab_interval)
 
     # ПОИСК ----------------------------------------------------------------
     def _do_search(self, now, vs: VisionState, cfg: Config, frame) -> None:

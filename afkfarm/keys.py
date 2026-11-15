@@ -116,6 +116,16 @@ ALIASES = {
     "TILDE": "BACKQUOTE", "Ё": "BACKQUOTE",
 }
 
+# Русская раскладка ЙЦУКЕН → физические клавиши (в игру уходит скан-код клавиши)
+_RU_LAYOUT = {
+    "Й": "Q", "Ц": "W", "У": "E", "К": "R", "Е": "T", "Н": "Y", "Г": "U", "Ш": "I", "Щ": "O",
+    "З": "P", "Х": "LBRACKET", "Ъ": "RBRACKET", "Ф": "A", "Ы": "S", "В": "D", "А": "F", "П": "G",
+    "Р": "H", "О": "J", "Л": "K", "Д": "L", "Ж": "SEMICOLON", "Э": "QUOTE", "Я": "Z", "Ч": "X",
+    "С": "C", "М": "V", "И": "B", "Т": "N", "Ь": "M", "Б": "COMMA", "Ю": "PERIOD",
+    "ТАБ": "TAB", "ЕСК": "ESC",
+}
+ALIASES.update(_RU_LAYOUT)
+
 _VK_TO_NAME: Dict[int, str] = {}
 for _name, _info in _KEYS.items():
     _VK_TO_NAME.setdefault(_info.vk, _name)
