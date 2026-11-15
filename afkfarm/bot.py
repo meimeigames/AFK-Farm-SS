@@ -254,7 +254,11 @@ class Bot:
                 log.warning("Окно игры «%s» не найдено — жду появления", cfg.window.title)
         if cfg.window.start_delay > 0:
             log.info("Старт через %.1f с…", cfg.window.start_delay)
-            self.clock.sleep(cfg.window.start_delay)
+            end = self.clock.now() + cfg.window.start_delay
+            while self.clock.now() < end:
+                self.heartbeat = self.clock.now()   # сторожевой таймер видит, что мы живы
+                if not self.clock.sleep(min(0.2, end - self.clock.now())):
+                    return
         if not cfg.regions.target_bar.is_valid():
             log.warning("Полоса HP цели не откалибрована — включён «слепой» режим: "
                         "TAB + атака по таймеру (%.0f с). Откалибруйте полосу цели "
