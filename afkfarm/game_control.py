@@ -29,7 +29,13 @@ class WinInputBackend:
     """Реальный ввод в Windows."""
 
     def key(self, info: KeyInfo, up: bool, use_scan: bool) -> bool:
-        return winapi.send_key(info.vk, info.scan, info.extended, up, use_scan)
+        ok = winapi.send_key(info.vk, info.scan, info.extended, up, use_scan)
+        if not ok:
+            log_throttled(logging.ERROR, "sendinput-fail",
+                          f"Windows отклонила нажатие (SendInput, код ошибки {winapi.last_error()}). "
+                          "Чаще всего игра запущена от имени администратора — запустите программу "
+                          "так же (кнопка на главной вкладке).", 20)
+        return ok
 
     def move(self, x: int, y: int) -> bool:
         ok = winapi.set_cursor_pos(x, y)
@@ -165,8 +171,10 @@ class InputController:
                     self._key(m, False, use_scan)
                     pressed.append(m)
                     self.clock.sleep(0.015)
-                self._key(main, False, use_scan)
+                sent = self._key(main, False, use_scan)
                 pressed.append(main)
+                if not sent:
+                    return False
                 self.clock.sleep(max(0.01, hold))
             finally:
                 # Отпускаем в обратном порядке — даже если ожидание прервано
@@ -176,9 +184,11 @@ class InputController:
             log.debug("Нажата клавиша %s", combo)
             return True
 
-    def _key(self, info: KeyInfo, up: bool, use_scan: bool) -> None:
+    def _key(self, info: KeyInfo, up: bool, use_scan: bool) -> bool:
+        ok = False
         try:
-            self.backend.key(info, up, use_scan)
+            ok = bool(self.backend.key(info, up, use_scan))
+            return ok
         finally:
             if up:
                 self._held_keys.discard(info)

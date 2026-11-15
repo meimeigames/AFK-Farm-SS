@@ -65,6 +65,20 @@ if IS_WINDOWS:
     user32.SetCursorPos.argtypes = (ctypes.c_int, ctypes.c_int)
     user32.GetWindowThreadProcessId.argtypes = (wintypes.HWND, ctypes.POINTER(wintypes.DWORD))
 
+    advapi32 = ctypes.WinDLL("advapi32", use_last_error=True)
+    shell32 = ctypes.WinDLL("shell32", use_last_error=True)
+    kernel32.OpenProcess.argtypes = (wintypes.DWORD, wintypes.BOOL, wintypes.DWORD)
+    kernel32.OpenProcess.restype = wintypes.HANDLE
+    kernel32.CloseHandle.argtypes = (wintypes.HANDLE,)
+    kernel32.GetCurrentProcess.restype = wintypes.HANDLE
+    advapi32.OpenProcessToken.argtypes = (wintypes.HANDLE, wintypes.DWORD,
+                                          ctypes.POINTER(wintypes.HANDLE))
+    advapi32.GetTokenInformation.argtypes = (wintypes.HANDLE, ctypes.c_int, ctypes.c_void_p,
+                                             wintypes.DWORD, ctypes.POINTER(wintypes.DWORD))
+    shell32.ShellExecuteW.argtypes = (wintypes.HWND, wintypes.LPCWSTR, wintypes.LPCWSTR,
+                                      wintypes.LPCWSTR, wintypes.LPCWSTR, ctypes.c_int)
+    shell32.ShellExecuteW.restype = ctypes.c_void_p
+
     WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
     user32.EnumWindows.argtypes = (WNDENUMPROC, wintypes.LPARAM)
 
@@ -244,13 +258,79 @@ def is_key_down(vk: int) -> bool:
     return bool(user32.GetAsyncKeyState(vk) & 0x8000)
 
 
+PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
+TOKEN_QUERY = 0x0008
+TOKEN_ELEVATION_CLASS = 20
+ERROR_ACCESS_DENIED = 5
+
+
+def _token_elevated(process_handle) -> Optional[bool]:
+    token = wintypes.HANDLE()
+    if not advapi32.OpenProcessToken(process_handle, TOKEN_QUERY, ctypes.byref(token)):
+        return True if ctypes.get_last_error() == ERROR_ACCESS_DENIED else None
+    try:
+        elevated = wintypes.DWORD(0)
+        size = wintypes.DWORD(0)
+        if not advapi32.GetTokenInformation(token, TOKEN_ELEVATION_CLASS, ctypes.byref(elevated),
+                                            ctypes.sizeof(elevated), ctypes.byref(size)):
+            return None
+        return bool(elevated.value)
+    finally:
+        kernel32.CloseHandle(token)
+
+
 def is_admin() -> bool:
+    """Запущена ли эта программа с правами администратора (повышенные права)."""
     if not IS_WINDOWS:
         return False
     try:
+        r = _token_elevated(kernel32.GetCurrentProcess())
+        if r is not None:
+            return r
         return bool(ctypes.windll.shell32.IsUserAnAdmin())
     except Exception:
         return False
+
+
+def is_process_elevated(pid: int) -> Optional[bool]:
+    """Запущен ли процесс с правами администратора. None — определить не удалось.
+
+    Если доступ к процессу запрещён, это почти всегда значит, что он запущен
+    с более высокими правами (или защищён), — считаем его «повышенным».
+    """
+    if not IS_WINDOWS or not pid:
+        return None
+    h = kernel32.OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, False, pid)
+    if not h:
+        return True if ctypes.get_last_error() == ERROR_ACCESS_DENIED else None
+    try:
+        return _token_elevated(h)
+    finally:
+        kernel32.CloseHandle(h)
+
+
+def is_window_elevated(hwnd) -> Optional[bool]:
+    return is_process_elevated(window_pid(hwnd)) if hwnd else None
+
+
+def relaunch_as_admin() -> bool:
+    """Запустить эту же программу с правами администратора (запрос UAC)."""
+    if not IS_WINDOWS:
+        return False
+    import os
+    if getattr(sys, "frozen", False):
+        exe, params = sys.executable, ""
+    else:
+        exe = sys.executable
+        script = os.path.abspath(sys.argv[0]) if sys.argv and sys.argv[0] else ""
+        params = f'"{script}"' if script else ""
+    cwd = os.path.dirname(os.path.abspath(sys.argv[0] if sys.argv and sys.argv[0] else exe))
+    rc = shell32.ShellExecuteW(None, "runas", exe, params, cwd, 1)
+    return (rc or 0) > 32
+
+
+def last_error() -> int:
+    return ctypes.get_last_error() if IS_WINDOWS else 0
 
 
 def _send_inputs(inputs) -> int:

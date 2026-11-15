@@ -100,3 +100,9 @@ def test_sendinput_types_into_window(qapp):
         assert edit.text().lower() == "afk1", edit.text()
     finally:
         w.close()
+
+
+def test_elevation_detection_for_own_process():
+    import os
+    from afkfarm import winapi
+    assert winapi.is_process_elevated(os.getpid()) == winapi.is_admin()

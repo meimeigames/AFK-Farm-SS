@@ -107,6 +107,10 @@ class MainWindow(QMainWindow):
         self.dashboard.startClicked.connect(self.start_bot)
         self.dashboard.pauseClicked.connect(self.toggle_pause)
         self.dashboard.stopClicked.connect(lambda: self.stop_bot("кнопка «Стоп»"))
+        self.dashboard.adminClicked.connect(self._relaunch_admin)
+        self.dashboard.testInputClicked.connect(self._test_input)
+        self._elev_cache = (None, 0.0, None)   # (hwnd, время проверки, результат)
+        self._self_admin = winapi.is_admin()
         self.bridge.status.connect(self._on_status)
         self.bridge.stopped.connect(self._on_stopped)
         self.bridge.logMessage.connect(self.dashboard.log.add)
@@ -249,9 +253,9 @@ class MainWindow(QMainWindow):
         self.game_window.set_title(cfg.window.title)
         self.dashboard.set_hotkeys(cfg.hotkeys.start, cfg.hotkeys.pause, cfg.hotkeys.stop)
         set_file_logging(cfg.log_to_file)
-        if winapi.IS_WINDOWS and not winapi.is_admin():
-            self.dashboard.admin_hint.setText("Если игра запущена от администратора — "
-                                              "запустите программу так же.")
+        if winapi.IS_WINDOWS:
+            self.dashboard.admin_hint.setText("права: администратор" if self._self_admin
+                                              else "права: обычные")
 
     # ------------------------------------------------------------------
     # Окно игры
@@ -273,6 +277,73 @@ class MainWindow(QMainWindow):
         self.dashboard.set_window_status(
             f"Окно игры: <b>{name}</b> — {size}, {'активно' if active else 'не активно'}{warn}",
             True, active)
+        self.dashboard.show_admin_warning(self._game_needs_admin(hwnd))
+
+    def _game_elevated(self, hwnd) -> Optional[bool]:
+        cached_hwnd, checked_at, value = self._elev_cache
+        now = time.monotonic()
+        if cached_hwnd != hwnd or now - checked_at > 10.0:
+            value = winapi.is_window_elevated(hwnd)
+            self._elev_cache = (hwnd, now, value)
+        return value
+
+    def _game_needs_admin(self, hwnd) -> bool:
+        """Игра запущена с правами администратора, а программа — нет."""
+        return bool(hwnd) and not self._self_admin and self._game_elevated(hwnd) is True
+
+    def _relaunch_admin(self):
+        self.stop_bot("перезапуск от имени администратора")
+        self.apply_now()
+        if winapi.relaunch_as_admin():
+            log.info("Запущена копия программы с правами администратора — эта закрывается")
+            self.close()
+            QApplication.quit()
+        else:
+            QMessageBox.warning(self, "Права администратора",
+                                "Не удалось перезапуститься (запрос UAC отклонён?).\n"
+                                "Закройте программу и запустите её через ПКМ → "
+                                "«Запуск от имени администратора».")
+
+    def _test_input(self):
+        if self.bot.running:
+            QMessageBox.information(self, "Проверка ввода", "Остановите бота перед проверкой.")
+            return
+        self.apply_now()
+        cfg = self.working
+        hwnd = self.game_window.locate()
+        if not hwnd:
+            QMessageBox.warning(self, "Проверка ввода", "Окно игры не найдено.")
+            return
+        game_elev = self._game_elevated(hwnd)
+        activated = self.game_window.activate()
+        time.sleep(0.4)
+        foreground = self.game_window.is_foreground()
+        sent = self.ui_controller.press(cfg.combat.target_key) if foreground else False
+        elev_text = {True: "от администратора", False: "обычные права", None: "не удалось определить"}
+        log.info("Проверка ввода: окно активировано=%s, активно=%s, клавиша %s отправлена=%s, "
+                 "режим ввода=%s, удержание=%.2f с, игра: %s, программа: %s",
+                 activated, foreground, cfg.combat.target_key, sent, cfg.safety.input_mode,
+                 cfg.safety.key_hold, elev_text[game_elev],
+                 "от администратора" if self._self_admin else "обычные права")
+        self.raise_()
+        self.activateWindow()
+        if not foreground:
+            msg = ("Не удалось сделать окно игры активным, поэтому клавиша не отправлена. "
+                   "Щёлкните по окну игры вручную и повторите.")
+        elif self._game_needs_admin(hwnd):
+            msg = ("Игра запущена от имени администратора, а программа — нет: Windows отбросит "
+                   "нажатие. Нажмите «Перезапустить от имени администратора».")
+        elif not sent:
+            msg = "Windows отклонила нажатие — подробности в журнале."
+        else:
+            msg = (f"Клавиша {cfg.combat.target_key} отправлена в окно игры.\n\n"
+                   "Выделился монстр — ввод работает.\n"
+                   "Ничего не произошло — попробуйте по очереди:\n"
+                   "1) «Настройки» → «Способ ввода» → «Виртуальные коды»;\n"
+                   "2) «Удержание клавиши» 0.15 с;\n"
+                   "3) запустить программу от имени администратора.\n"
+                   "Если не помогло ничего — игра, вероятно, защищена от эмуляции ввода.")
+        QMessageBox.information(self, "Проверка ввода", msg)
 
     def _grab_for_ui(self, bring_front: bool = True) -> Optional[np.ndarray]:
         """Снимок окна игры для калибровки.
@@ -375,6 +446,19 @@ class MainWindow(QMainWindow):
                                 "Горячие клавиши программы совпадают с игровыми: "
                                 + ", ".join(conflicts) + ".\nИзмените их на вкладке «Настройки».")
             return
+        hwnd = self.game_window.locate()
+        if hwnd and self._game_needs_admin(hwnd):
+            ans = QMessageBox.question(
+                self, "Права администратора",
+                "Игра запущена от имени администратора, а программа — нет.\n"
+                "Windows не пропустит нажатия в игру.\n\n"
+                "Перезапустить программу от имени администратора?")
+            if ans == QMessageBox.Yes:
+                self._relaunch_admin()
+                return
+        log.info("Права: программа — %s; режим ввода — %s, удержание %.2f с",
+                 "администратор" if self._self_admin else "обычные",
+                 cfg.safety.input_mode, cfg.safety.key_hold)
         self.calib_tab.stop_live()
         self.route_tab.stop_recording()
         if self.bot.start():

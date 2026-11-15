@@ -482,9 +482,14 @@ class Bot:
             if c.simple_use_skills and self.combat.use_ready_skill(now, vs, cfg):
                 return
             if now >= self.simple_next_attack and now >= self.combat.busy_until:
+                interval = self._simple_attack_interval(cfg)
                 if self.ctrl.press(c.attack_key):
-                    self.combat.last_attack = now
-                self.simple_next_attack = now + self._simple_attack_interval(cfg)
+                    # отсчёт от момента нажатия (press завершается через key_hold после него)
+                    pressed_at = self.clock.now() - cfg.safety.key_hold
+                    self.combat.last_attack = pressed_at
+                    self.simple_next_attack = pressed_at + interval
+                else:
+                    self.simple_next_attack = now + interval
             return
 
         # Полосы нет

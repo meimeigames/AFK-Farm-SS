@@ -244,7 +244,7 @@ def test_simple_mode_tab_then_spam_attack_until_bar_disappears():
     gaps = sorted(b - a for a, b in zip(f_times, f_times[1:]) if b - a < 2.0)
     median = gaps[len(gaps) // 2]
     assert 0.29 <= median <= 0.40, median
-    assert min(gaps) >= 0.25 and max(gaps) <= 0.7, (min(gaps), max(gaps))   # зелье может «вклиниться»
+    assert min(gaps) >= 0.295 and max(gaps) <= 0.8, (min(gaps), max(gaps))  # зелье может «вклиниться»
     assert bot.ctrl.guard.total_blocked == 0
 
 
@@ -317,3 +317,29 @@ def test_switch_mode_while_running():
     run_for(bot, clock, 60)
     assert game.clicks == []
     assert bot.stats.kills >= 2
+
+
+def test_rejected_sendinput_is_reported_and_key_released():
+    from afkfarm.game_control import InputController
+    from fake_game import FakeWindow
+
+    class RejectingBackend:
+        def __init__(self):
+            self.events = []
+
+        def key(self, info, up, use_scan):
+            self.events.append((info.name, up))
+            return up          # нажатие отклонено, отпускание проходит
+
+        def move(self, x, y):
+            return True
+
+        def button(self, b, up):
+            return True
+
+    backend = RejectingBackend()
+    cfg = sim_config()
+    ctrl = InputController(FakeWindow(), lambda: cfg, FakeClock(), backend=backend)
+    assert ctrl.press("CTRL+1") is False
+    assert ("1", True) in backend.events and ("CTRL", True) in backend.events
+    assert not ctrl._held_keys

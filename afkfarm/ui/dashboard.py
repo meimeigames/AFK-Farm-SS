@@ -54,6 +54,8 @@ class Dashboard(QWidget):
     startClicked = Signal()
     pauseClicked = Signal()
     stopClicked = Signal()
+    adminClicked = Signal()
+    testInputClicked = Signal()
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -68,10 +70,34 @@ class Dashboard(QWidget):
         self.window_label = QLabel("Окно игры: поиск…")
         self.window_label.setTextFormat(Qt.RichText)
         self.admin_hint = hint("")
+        self.btn_test_input = QPushButton("Проверить ввод")
+        self.btn_test_input.setToolTip("Активировать окно игры и один раз нажать клавишу выбора цели.\n"
+                                       "Если в игре выделился монстр — нажатия доходят.")
+        self.btn_test_input.clicked.connect(self.testInputClicked.emit)
         wl.addWidget(self.window_dot)
         wl.addWidget(self.window_label, 1)
         wl.addWidget(self.admin_hint)
+        wl.addWidget(self.btn_test_input)
         root.addWidget(win_card)
+
+        # --- предупреждение о правах администратора ---
+        self.admin_card = QFrame()
+        self.admin_card.setObjectName("card")
+        self.admin_card.setStyleSheet("QFrame#card { border: 1px solid #c94a4a; background: #3a1d1d; }")
+        al = QHBoxLayout(self.admin_card)
+        al.setContentsMargins(12, 8, 12, 8)
+        self.admin_warn = QLabel(
+            "⚠ <b>Игра запущена от имени администратора, а программа — нет.</b> Windows не пропускает "
+            "нажатия из обычной программы в окно администратора: бот видит HP/MP, но в игре ничего "
+            "не происходит.")
+        self.admin_warn.setWordWrap(True)
+        self.admin_warn.setTextFormat(Qt.RichText)
+        self.btn_admin = QPushButton("Перезапустить от имени администратора")
+        self.btn_admin.clicked.connect(self.adminClicked.emit)
+        al.addWidget(self.admin_warn, 1)
+        al.addWidget(self.btn_admin)
+        self.admin_card.setVisible(False)
+        root.addWidget(self.admin_card)
 
         # --- кнопки ---
         btns = QHBoxLayout()
@@ -182,6 +208,9 @@ class Dashboard(QWidget):
         self.btn_pause.setText(f"⏸  Пауза  [{pause}]" if pause else "⏸  Пауза")
         self.btn_stop.setText(f"■  Стоп  [{stop}]" if stop else "■  Стоп")
         self.hotkey_hint.setText(f"Горячие клавиши работают и в игре. Аварийная остановка — {stop}.")
+
+    def show_admin_warning(self, show: bool) -> None:
+        self.admin_card.setVisible(show)
 
     def set_window_status(self, text: str, ok: bool, active: bool = False) -> None:
         color = GREEN if ok and active else (ACCENT if ok else RED)

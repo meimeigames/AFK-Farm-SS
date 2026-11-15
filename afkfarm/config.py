@@ -284,7 +284,7 @@ class HotkeysConfig:
 @dataclass
 class SafetyConfig:
     input_mode: str = "scancode"        # scancode | vk
-    key_hold: float = 0.04              # длительность удержания клавиши, с
+    key_hold: float = 0.08              # длительность удержания клавиши, с (при низком FPS — больше)
     min_input_gap: float = 0.06         # минимальная пауза между любыми нажатиями, с
     max_same_key_per_10s: int = 60      # защита от спама одной клавишей
     max_inputs_per_10s: int = 120       # общий лимит нажатий
@@ -296,7 +296,7 @@ class SafetyConfig:
 
 @dataclass
 class Config:
-    version: int = 3
+    version: int = 4
     window: WindowConfig = field(default_factory=WindowConfig)
     regions: RegionsConfig = field(default_factory=RegionsConfig)
     vision: VisionConfig = field(default_factory=VisionConfig)
@@ -413,6 +413,10 @@ def migrate(cfg: "Config", data: Any) -> "Config":
         if cfg.combat.skills == _old_default_skills():
             cfg.combat.skills = default_skills()
             cfg.combat.simple_use_skills = True
+    if old_version < 4:
+        # v4: 40 мс удержания игра могла не заметить при низком FPS
+        if abs(cfg.safety.key_hold - 0.04) < 1e-9:
+            cfg.safety.key_hold = 0.08
     cfg.version = Config().version
     return cfg
 
